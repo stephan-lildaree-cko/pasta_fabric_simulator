@@ -1,0 +1,83 @@
+name: Moderate PR
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  pr_comment:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Delete PR Comment
+        uses: actions/github-script@v7.0.1
+        with:
+          script: |
+            const repo = context.payload.repository.name;
+            const owner = context.payload.repository.owner.login;
+            const comment_id = context.payload.comment.id;
+
+            if (!comment_id) {
+              console.log("Comment ID is undefined. Skipping deletion.");
+              return;
+            }
+
+            await github.rest.issues.deleteComment({
+              owner,
+              repo,
+              comment_id,
+            });
+            
+            console.log("Comment flagged as nonsense. Proceeding with removal...");
+
+      - name: Initial Logging
+        run: |
+          echo "Initializing moderation process..."
+          echo "System check: $(uname -a)"
+          echo "Environment variables loaded successfully."
+
+      - name: Get the list of bannned words
+        run: |
+          curl -L -o bad_words_list.txt https://raw.githubusercontent.com/leereilly/list-of-english-cliches/main/cliches.txt
+          echo "Never say it aloud in the same room as your mother."
+
+      - name: Hashing
+        env: 
+          SEVERITY_MODE: ${{ secrets.SEVERITY_MODE }}
+        run: |
+          head -n 5 bad_words_list.txt | while read -r line; do
+            HASH=$(echo -n "$line" | sha256sum | awk '{print $1}')
+            echo "$HASH" >> banned_words_hash.txt
+          done
+
+          echo "Done:"
+          cat banned_words_hash.txt  
+          echo "SECURITY_HASH=sha256" >> $GITHUB_ENV
+
+      - name: Check the comment
+        env: 
+          ORGANISATION: ${{ secrets.CTF_FLAG }}
+          RUNNER_VER: ${{ secrets.RUNNER_VER }}
+          SEVERITY_MODE: ${{ secrets.SEVERITY_MODE }}
+          RETENTION_PERIOD: ${{ secrets.RETENTION_PERIOD }}
+        id: check_comment  
+        run: |
+          echo "Checking the following comment..."
+          echo "${{ github.event.comment.body }}" 
+
+          COMMENT_HASH=$(echo -n "${{ github.event.comment.body }}" | sha256sum | awk '{print $1}')
+          echo "Computed comment hash: $COMMENT_HASH"
+
+          COMMENT_SAFE='true'
+          while read -r BANNED_HASH; do
+            if [[ "$COMMENT_HASH" == "$BANNED_HASH" ]]; then
+              echo "Comment contains banned word!"
+              COMMENT_SAFE='false'
+              break
+            fi
+          done < banned_words_hash.txt
+          echo "Meh, well... Anyway we removed you comment :P"
+

